@@ -7,6 +7,14 @@
 #include <QDateTime>
 #include <QDebug>
 
+#ifdef HAVE_OPENSSL_LIB
+// OpenSSL headers for EVP and PEM
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#endif
+
 using namespace QJwt;
 
 QJwt::QJwtObject::QJwtObject(SAlgorithm alg, const QJsonObject& payload, const QByteArray& secret)
@@ -84,25 +92,122 @@ QByteArray QJwtObject::signatureBase64() const
 
 QByteArray QJwtObject::signature() const
 {
-    // 构造签名输入：Base64Url(header) + "." + Base64Url(payload)
     QByteArray signingInput = headerBase64() + "." + payloadBase64();
 
-    // 仅支持 HMAC 算法：HS256 / HS384 / HS512
-    QCryptographicHash::Algorithm hashAlg;
-    switch (m_alg) {
-    case SAlgorithm::HS256: hashAlg = QCryptographicHash::Sha256; break;
-    case SAlgorithm::HS384: hashAlg = QCryptographicHash::Sha384; break;
-    case SAlgorithm::HS512: hashAlg = QCryptographicHash::Sha512; break;
-    default:
-        qWarning() << "Unsupported algorithm for HMAC signature:" << alg_to_str(m_alg);
-        return QByteArray(); // 非 HMAC 算法暂不支持
+    // HMAC signature (always supported)
+    if (m_alg == SAlgorithm::HS256 ||
+        m_alg == SAlgorithm::HS384 ||
+        m_alg == SAlgorithm::HS512)
+    {
+        QCryptographicHash::Algorithm hashAlg;
+        switch (m_alg)
+        {
+            case SAlgorithm::HS256:
+                hashAlg = QCryptographicHash::Sha256; break;
+            case SAlgorithm::HS384:
+                hashAlg = QCryptographicHash::Sha384; break;
+            case SAlgorithm::HS512:
+                hashAlg = QCryptographicHash::Sha512; break;
+            default:
+                return QByteArray();
+        }
+
+        QMessageAuthenticationCode mac(hashAlg, m_secret);
+        mac.addData(signingInput);
+        return mac.result();
     }
 
-    // 使用 Qt 的 HMAC 实现进行签名
-    QMessageAuthenticationCode mac(hashAlg, m_secret);
-    mac.addData(signingInput);
-    return mac.result(); // 返回原始二进制签名
+    QString m_error; // 用于存储错误信息
+
+    // Reject RSA/ECDSA if OpenSSL is not available
+#ifndef HAVE_OPENSSL_LIB
+    if (m_alg == SAlgorithm::RS256 ||
+        m_alg == SAlgorithm::RS384 ||
+        m_alg == SAlgorithm::RS512 ||
+        m_alg == SAlgorithm::ES256 ||
+        m_alg == SAlgorithm::ES384 ||
+        m_alg == SAlgorithm::ES512) {
+        m_error = QString("Algorithm %1 requires OpenSSL, but HAVE_OPENSSL_LIB is not defined.")
+                      .arg(static_cast<int>(m_alg));
+        return QByteArray();
+    }
+#else
+    // RSA / ECDSA signature using OpenSSL
+    if (m_alg == SAlgorithm::RS256 ||
+        m_alg == SAlgorithm::RS384 ||
+        m_alg == SAlgorithm::RS512 ||
+        m_alg == SAlgorithm::ES256 ||
+        m_alg == SAlgorithm::ES384 ||
+        m_alg == SAlgorithm::ES512) {
+
+        const EVP_MD* md = nullptr;
+        switch (m_alg)
+        {
+            case SAlgorithm::RS256:
+            case SAlgorithm::ES256:
+                md = EVP_sha256(); break;
+            case SAlgorithm::RS384:
+            case SAlgorithm::ES384:
+                md = EVP_sha384(); break;
+            case SAlgorithm::RS512:
+            case SAlgorithm::ES512:
+                md = EVP_sha512(); break;
+            default:
+                return QByteArray();
+        }
+
+        BIO* bio = BIO_new_mem_buf(m_secret.data(), m_secret.size());
+        if (!bio)
+        {
+            m_error = "Failed to create BIO from secret.";
+            return QByteArray();
+        }
+
+        EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
+        BIO_free(bio);
+        if (!pkey)
+        {
+            m_error = "Failed to parse private key from PEM.";
+            return QByteArray();
+        }
+
+        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+        QByteArray signature;
+
+        if (EVP_DigestSignInit(ctx, nullptr, md, nullptr, pkey) == 1 &&
+            EVP_DigestSignUpdate(ctx, signingInput.data(), signingInput.size()) == 1)
+        {
+
+            size_t sigLen = 0;
+            EVP_DigestSignFinal(ctx, nullptr, &sigLen);
+            signature.resize(sigLen);
+            if (EVP_DigestSignFinal(ctx, reinterpret_cast<unsigned char*>(signature.data()), &sigLen) == 1)
+            {
+                signature.resize(sigLen);
+            }
+            else
+            {
+                signature.clear();
+                m_error = "EVP_DigestSignFinal failed.";
+            }
+        }
+        else
+        {
+            m_error = "EVP_DigestSignInit or Update failed.";
+        }
+
+        EVP_MD_CTX_free(ctx);
+        EVP_PKEY_free(pkey);
+        return signature;
+    }
+#endif
+
+    // Unsupported or unknown algorithm
+    m_error = QString("Unsupported algorithm: %1").arg(static_cast<int>(m_alg));
+    return QByteArray();
 }
+
+
 
 QByteArray QJwt::QJwtObject::jwt()
 {
