@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.34930.48
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QtJwt", "QtJwt.vcxproj", "{1782708F-7A6E-3292-A29F-A9F0F86F77B5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1782708F-7A6E-3292-A29F-A9F0F86F77B5}.Debug|x86.ActiveCfg = Debug|Win32
+		{1782708F-7A6E-3292-A29F-A9F0F86F77B5}.Debug|x86.Build.0 = Debug|Win32
+		{1782708F-7A6E-3292-A29F-A9F0F86F77B5}.Release|x86.ActiveCfg = Release|Win32
+		{1782708F-7A6E-3292-A29F-A9F0F86F77B5}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {42CFE411-CDD4-4B17-BF40-9FA2002556DC}
+	EndGlobalSection
+EndGlobal

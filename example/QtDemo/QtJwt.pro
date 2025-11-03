@@ -7,6 +7,8 @@
 QT += core network
 QT -= gui
 
+CONFIG += console
+
 TEMPLATE = app
 
 #-----------------------------------------------------------------------
